@@ -242,6 +242,49 @@ def _followers(bones, driven):
     return out
 
 
+def _segment_helpers(bones, driven, skip):
+    rest = worlds(bones)[:, :3, 3]
+    n = len(bones)
+    kids = {}
+    for i, b in enumerate(bones):
+        kids.setdefault(b['parent'], []).append(i)
+    segments = {}
+    for d in driven:
+        for c in kids.get(d, []):
+            if c in driven and np.linalg.norm(rest[c] - rest[d]) > 1.0:
+                segments[d] = c
+                break
+
+    def below(p):
+        out, stack = [], list(kids.get(p, []))
+        while stack:
+            k = stack.pop()
+            if k in driven:
+                out.append(k)
+                stack.extend(kids.get(k, []))
+        return out
+    out = {}
+    for h, b in enumerate(bones):
+        if h in driven or h in skip or b.get('physics') or not 0 <= b['parent'] < n:
+            continue
+        best = None
+        for d in below(b['parent']):
+            if d not in segments:
+                continue
+            a, e = rest[d], rest[segments[d]]
+            v = e - a
+            length = np.linalg.norm(v)
+            t = float(np.dot(rest[h] - a, v) / (length * length))
+            gap = np.linalg.norm(rest[h] - (a + np.clip(t, 0, 1) * v))
+            if -0.02 <= t <= 1.02 and gap < max(6.0, 0.08 * length):
+                rank = (t > 0.95, t)
+                if best is None or rank < best[0]:
+                    best = (rank, d)
+        if best is not None:
+            out[h] = best[1]
+    return out
+
+
 def _scale_rotation(R, s):
     if s == 1.0:
         return R
@@ -273,21 +316,27 @@ def clip_skin(archive, base, bank, clip, root_motion=False):
     count = len(frames)
     world = np.zeros((count, n, 4, 4))
     driven = {b: t for t, b in TRACK_BONE.items() if is_short(data.types[t])}
+    follow = _followers(bones, driven)
+    attach = _segment_helpers(bones, driven, follow)
     order, seen = [], set()
 
     def visit(i):
         if i in seen:
             return
+        seen.add(i)
         p = bones[i]['parent']
         if 0 <= p < n:
             visit(p)
-        seen.add(i)
+        if i in attach:
+            visit(attach[i])
         order.append(i)
     for i in range(n):
         visit(i)
-    follow = _followers(bones, driven)
     for i in order:
         b = bones[i]
+        if i in attach:
+            world[:, i] = world[:, attach[i]] @ (inv[attach[i]] @ rest[i])
+            continue
         m = np.tile(np.eye(4), (count, 1, 1))
         if i in driven:
             m[:, :3, :3] = local[:, driven[i]]
