@@ -117,7 +117,10 @@ def load_base_reference():
         config=os.path.join(home,'studio.json')
         if not os.path.isfile(config):config=os.path.join(root,'studio.json')
         if not os.path.isfile(config):raise ValueError('studio.json não encontrado; abra o projeto pelo Studio.')
-        result=subprocess.run([python,'-m','tools.skins_t5.native','--config',config,'--base',str(data['base_index']),'--output',folder],
+        command=[python,'-m','tools.skins_t5.native']
+        for exe in (os.environ.get('T5SKIN_EXE',''),os.path.join(home,'Tekken5_SkinStudio.exe')):
+            if exe and os.path.isfile(exe):command=[exe,'--native'];break
+        result=subprocess.run(command+['--config',config,'--base',str(data['base_index']),'--output',folder],
                               stdout=subprocess.PIPE,stderr=subprocess.PIPE,universal_newlines=True,cwd=root,timeout=180,
                               creationflags=0x08000000 if os.name=='nt' else 0)
         if result.returncode:raise ValueError('Falha ao importar base T5: '+result.stderr[-1200:])

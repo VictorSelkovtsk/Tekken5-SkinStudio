@@ -9,29 +9,29 @@ Autor: **VictorSelkovtsk** · Licença: **GPL-3.0**
 ## Download e uso
 
 1. Baixe o `Tekken5-SkinStudio-<versão>.zip` da página de releases e extraia numa pasta com espaço livre.
-2. Abra `Abrir Skin Studio.bat`. A interface abre no navegador, em `http://127.0.0.1:8795`, e só atende o seu próprio computador.
-3. Em **Pastas e jogo**, indique a sua ISO **original** do Tekken 5. A ferramenta confere se é a versão USA 1.00 e recusa outras.
+2. Abra o `Tekken5_SkinStudio.exe`.
+3. Na **configuração inicial**, indique a sua ISO **original** do Tekken 5. A ferramenta confere se é a versão USA 1.00 e recusa outras. Para mudar depois, use *Arquivo › Pastas e jogo*.
 
-O pacote já inclui o Python (com NumPy e Pillow) e o Blender 2.79 portáteis, na pasta `runtime`. Não é preciso instalar mais nada.
+O pacote já inclui o Blender 2.79 portátil, na pasta `runtime`. Não é preciso instalar mais nada.
 
 Nenhum arquivo do jogo acompanha o programa. A ISO original nunca é alterada: os mods vão para uma **ISO nova**, gerada pelo Studio.
 
 ## Idiomas
 
-A interface está em **português**, **inglês** e **espanhol**. Escolha no canto superior direito; a escolha fica salva.
+A interface está em **português**, **inglês** e **espanhol**. Escolha no menu *Idioma (Language)* ou na configuração inicial; a troca vale na hora e fica salva.
 
-Para acrescentar ou corrigir um idioma, crie a pasta `lang` ao lado do `Abrir Skin Studio.bat` e coloque nela um JSON no formato de `tools/skins_t5/lang/en.json`:
+Para acrescentar ou corrigir um idioma, crie a pasta `lang` ao lado do `Tekken5_SkinStudio.exe` e coloque nela um JSON no formato de `tools/skins_t5/lang/en.json`:
 - `"_name"` é o nome do idioma;
 - as chaves são os textos em português e os valores, a tradução;
 - marcadores como `{0}` devem continuar no texto.
 
 ## Roupas originais do Tekken 5
 
-No filtro **Tekken 5** aparecem todas as roupas do jogo.
+No painel **Fontes**, a opção **Tekken 5** lista todas as roupas do jogo, por personagem.
 
 - **Prévia:** modelo texturizado, com cores por osso, peso de cada osso e ossos de física.
-- **Animações do jogo:** a lista abaixo da prévia toca os golpes e movimentos do personagem. **Mover raiz** desloca o personagem pelo chão, como no jogo. As animações também funcionam na prévia de uma skin importada, porque ela usa o esqueleto da roupa base.
-- **Trocar texturas:** na aba **Materiais**, clique em **Trocar textura…** e escolha qualquer imagem. A prévia já mostra como fica no PS2: no tamanho original e reduzida à paleta da textura (16 ou 256 cores). **Original** desfaz a troca.
+- **Animações do jogo:** a aba **Animações** toca os golpes e movimentos do personagem, com play/pausa, linha do tempo, velocidade e loop. **Mover raiz** desloca o personagem pelo chão, como no jogo. As animações também funcionam na prévia de uma skin importada, porque ela usa o esqueleto da roupa base.
+- **Trocar texturas:** na aba **Materiais**, dê duplo clique numa textura (ou use **Trocar textura…**) e escolha qualquer imagem. A prévia já mostra como fica no PS2: no tamanho original e reduzida à paleta da textura (16 ou 256 cores). **Original** desfaz a troca.
 - **Salvar texturas como mod:** cria um mod que substitui só as texturas da roupa. Modelo, esqueleto e física continuam os originais, e o tamanho do pacote não muda.
 
 ## Importar uma roupa de outro jogo
@@ -64,9 +64,10 @@ No Blender, **Importar base original T5** traz a roupa original na camada 2, par
 
 ## Conferir ossos, caminhada e física
 
-- **Visualização:** troca a textura por **Cores por osso**, **Peso de um osso** ou **Física do jogo**.
-- **Clique no modelo** para ver os ossos que movem aquele ponto e trocar o destino deles.
-- **▶ Andar** reproduz uma caminhada gerada pelo Studio; **Balançar física** mostra o que os ossos simulados movem. É ilustrativo: a física real acontece no jogo.
+- **Visualização** (barra de ferramentas): troca a textura por **Cores por osso**, **Peso de um osso** ou **Física do jogo**.
+- **Teste de pesos** (aba **Ossos e proporções**): gira um osso e seus filhos para conferir a deformação.
+- Na aba **Ossos e proporções**, dê duplo clique numa linha para levar aquele osso da fonte para outro osso do Tekken 5.
+- As animações do jogo mostram a skin em movimento antes de ir ao jogo. A física real (cabelo, tecidos) acontece só no jogo.
 
 ## Mods
 
@@ -85,15 +86,18 @@ No Blender, **Importar base original T5** traz a roupa original na camada 2, par
 
 ## Código-fonte
 
-Requisitos: Python 3.11 com NumPy e Pillow.
+Requisitos: Python 3.11 com PyQt5, NumPy e Pillow (`pip install -r requirements.txt`).
 
 ```powershell
-python -m tools.skins_t5.studio
+python -m tools.skins_t5.qt
 ```
+
+Para gerar o `.exe` (precisa do PyInstaller): `build_exe.bat`.
 
 | Módulo | Função |
 | --- | --- |
-| `tools/skins_t5/studio.py`, `ui/` | Servidor local e interface. |
+| `tools/skins_t5/qt/` | Interface (PyQt5). |
+| `studio.py` | Operações do Studio: fontes, prévia, mods, ISO e Blender. |
 | `sources.py`, `taghd.py` | Leitura das fontes (Tekken 4, Tag HD, XPS). |
 | `convert.py`, `native.py` | Adaptação ao esqueleto e pacote nativo do Tekken 5. |
 | `original.py`, `anim64.py` | Roupas originais, mods de textura e animações do jogo. |
@@ -105,7 +109,7 @@ python -m tools.skins_t5.studio
 
 - O decodificador de animações comprimidas (formato 0x64) é uma adaptação para Python do `ParseAnimation0x64` do [TKMovesets](https://github.com/Kiloutre/TKMovesets), de Kiloutre (GPL-3.0). Por isso o Skin Studio também é distribuído sob a GPL-3.0.
 - A leitura de XPS teve como referência o importador [XNALaraMesh](https://github.com/johnzero7/XNALaraMesh), de johnzero7.
-- O pacote inclui o [Blender 2.79](https://www.blender.org) (GPL) e o Python (licença PSF), sem modificações.
+- O pacote inclui o [Blender 2.79](https://www.blender.org) (GPL), sem modificações.
 
 ## Licença
 

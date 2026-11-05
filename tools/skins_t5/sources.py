@@ -1,4 +1,5 @@
 from pathlib import Path
+import sys
 import io
 import hashlib
 import json
@@ -6,7 +7,7 @@ import ntpath
 import struct
 import numpy as np
 
-REPO = Path(__file__).resolve().parents[2]
+REPO = Path(sys.executable).resolve().parent if getattr(sys, 'frozen', False) else Path(__file__).resolve().parents[2]
 
 
 def worlds(bones):

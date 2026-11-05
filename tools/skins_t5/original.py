@@ -221,6 +221,12 @@ def _matrices(q):
 
 
 def clip_transforms(archive, base, bank, clip, root_motion=False):
+    out = clip_skin(archive, base, bank, clip, root_motion)
+    count, n = out.shape[:2]
+    return dict(frames=count, bones=n, fps=60, data=base64.b64encode(out.astype('<f4').tobytes()).decode('ascii'))
+
+
+def clip_skin(archive, base, bank, clip, root_motion=False):
     package = archive.read(resource(base))
     bones = skeleton(package)
     data = BodyBank(pack(archive.read(resource(base) + BANKS[int(bank)]))[0])
@@ -257,5 +263,4 @@ def clip_transforms(archive, base, bank, clip, root_motion=False):
         p = b['parent']
         world[:, i] = world[:, p] @ m if 0 <= p < n else m
     skin = world @ inv
-    out = np.concatenate([skin[:, :, :3, :3].reshape(count, n, 9), skin[:, :, :3, 3]], -1).astype('<f4')
-    return dict(frames=count, bones=n, fps=60, data=base64.b64encode(out.tobytes()).decode('ascii'))
+    return np.concatenate([skin[:, :, :3, :3].reshape(count, n, 9), skin[:, :, :3, 3]], -1).astype(np.float32)
