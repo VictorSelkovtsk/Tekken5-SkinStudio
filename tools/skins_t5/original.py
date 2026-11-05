@@ -16,7 +16,7 @@ from .sources import worlds
 
 TRACK_BONE = {2: 0, 3: 1, 4: 2, 7: 3, 8: 6, 5: 4, 9: 7, 10: 8, 11: 9, 12: 10, 13: 11, 14: 12, 15: 13, 16: 14,
               17: 15, 18: 16, 19: 17, 20: 18, 21: 19, 22: 20}
-BANKS = (2, 4, 6)
+BANKS = (-9, -7, -5)
 BANK_NAMES = ('Golpes', 'Golpes (variação)', 'Extra')
 
 
@@ -226,6 +226,38 @@ def clip_transforms(archive, base, bank, clip, root_motion=False):
     return dict(frames=count, bones=n, fps=60, data=base64.b64encode(out.astype('<f4').tobytes()).decode('ascii'))
 
 
+HELPER_FOLLOW = 1.0
+
+
+def _followers(bones, driven):
+    out = {}
+    for i, b in enumerate(bones):
+        if i in driven or b.get('physics'):
+            continue
+        for d in driven:
+            o = bones[d]
+            if o['parent'] == b['parent'] and np.linalg.norm(np.subtract(o['translation'], b['translation'])) < 3.0:
+                out[i] = d
+                break
+    return out
+
+
+def _scale_rotation(R, s):
+    if s == 1.0:
+        return R
+    tr = np.clip((np.trace(R, axis1=-2, axis2=-1) - 1) / 2, -1, 1)
+    angle = np.arccos(tr)
+    axis = np.stack([R[..., 2, 1] - R[..., 1, 2], R[..., 0, 2] - R[..., 2, 0], R[..., 1, 0] - R[..., 0, 1]], -1)
+    norm = np.linalg.norm(axis, axis=-1, keepdims=True)
+    axis = np.where(norm > 1e-9, axis / np.maximum(norm, 1e-9), [1.0, 0.0, 0.0])
+    a = angle * s
+    x, y, z = axis[..., 0], axis[..., 1], axis[..., 2]
+    c, sn, t = np.cos(a), np.sin(a), 1 - np.cos(a)
+    return np.stack([np.stack([c + x * x * t, x * y * t - z * sn, x * z * t + y * sn], -1),
+                     np.stack([y * x * t + z * sn, c + y * y * t, y * z * t - x * sn], -1),
+                     np.stack([z * x * t - y * sn, z * y * t + x * sn, c + z * z * t], -1)], -2)
+
+
 def clip_skin(archive, base, bank, clip, root_motion=False):
     package = archive.read(resource(base))
     bones = skeleton(package)
@@ -253,10 +285,18 @@ def clip_skin(archive, base, bank, clip, root_motion=False):
         order.append(i)
     for i in range(n):
         visit(i)
+    follow = _followers(bones, driven)
     for i in order:
         b = bones[i]
         m = np.tile(np.eye(4), (count, 1, 1))
-        m[:, :3, :3] = local[:, driven[i]] if i in driven else _euler(b['rotation'])
+        if i in driven:
+            m[:, :3, :3] = local[:, driven[i]]
+        elif i in follow:
+            src = follow[i]
+            delta = local[:, driven[src]] @ _euler(bones[src]['rotation']).T
+            m[:, :3, :3] = _scale_rotation(delta, HELPER_FOLLOW) @ _euler(b['rotation'])
+        else:
+            m[:, :3, :3] = _euler(b['rotation'])
         m[:, :3, 3] = b['translation']
         if i == 0:
             m[:, :3, 3] = q[:, 1, :3] + (q[:, 0, :3] if root_motion else 0)
