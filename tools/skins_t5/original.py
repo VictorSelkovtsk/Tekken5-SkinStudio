@@ -267,6 +267,16 @@ def _segment_helpers(bones, driven, skip):
     for h, b in enumerate(bones):
         if h in driven or h in skip or b.get('physics') or not 0 <= b['parent'] < n:
             continue
+        p = b['parent']
+        up = bones[p]['parent']
+        if p in segments and up in driven and segments.get(up) == p:
+            v = rest[segments[p]] - rest[p]
+            length = np.linalg.norm(v)
+            off = rest[h] - rest[p]
+            along = float(np.dot(off, v)) / length
+            if abs(along) < 0.05 * length and np.linalg.norm(off) < 0.2 * length:
+                out[h] = (p, up)
+                continue
         best = None
         for d in below(b['parent']):
             if d not in segments:
