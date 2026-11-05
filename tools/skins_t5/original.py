@@ -281,7 +281,10 @@ def _segment_helpers(bones, driven, skip):
                 if best is None or rank < best[0]:
                     best = (rank, d)
         if best is not None:
-            out[h] = best[1]
+            d, t = best[1], best[0][1]
+            up = bones[d]['parent']
+            joint = t < 0.05 and segments.get(up) == d and up in driven and up != b['parent']
+            out[h] = (d, up if joint else None)
     return out
 
 
@@ -328,14 +331,19 @@ def clip_skin(archive, base, bank, clip, root_motion=False):
         if 0 <= p < n:
             visit(p)
         if i in attach:
-            visit(attach[i])
+            visit(attach[i][0])
         order.append(i)
     for i in range(n):
         visit(i)
     for i in order:
         b = bones[i]
         if i in attach:
-            world[:, i] = world[:, attach[i]] @ (inv[attach[i]] @ rest[i])
+            d, up = attach[i]
+            world[:, i] = world[:, d] @ (inv[d] @ rest[i])
+            if up is not None:
+                other = (world[:, up] @ (inv[up] @ rest[i]))[:, :3, :3]
+                mine = world[:, i, :3, :3]
+                world[:, i, :3, :3] = other @ _scale_rotation(np.swapaxes(other, -1, -2) @ mine, 0.5)
             continue
         m = np.tile(np.eye(4), (count, 1, 1))
         if i in driven:
