@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+/runtime/
+/mods/
+/edits/
+/builds/
+/cache/
+/lang/
+/studio.json
+/launcher.log
+/last_error.log
+/last_blender_edit.json
+*.iso
