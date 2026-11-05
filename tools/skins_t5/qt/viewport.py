@@ -198,8 +198,13 @@ class Viewport(QOpenGLWidget):
             t.destroy()
         self.gl_textures = {}
         for name, img in self.images.items():
-            tex = QOpenGLTexture(np_to_qimage(img).mirrored(False, False), QOpenGLTexture.GenerateMipMaps)
-            tex.setMinMagFilters(QOpenGLTexture.LinearMipMapLinear, QOpenGLTexture.Linear)
+            cutout = img.ndim == 3 and img.shape[2] == 4 and bool((img[..., 3] < 128).any())
+            if cutout:
+                tex = QOpenGLTexture(np_to_qimage(img).mirrored(False, False), QOpenGLTexture.DontGenerateMipMaps)
+                tex.setMinMagFilters(QOpenGLTexture.Linear, QOpenGLTexture.Linear)
+            else:
+                tex = QOpenGLTexture(np_to_qimage(img).mirrored(False, False), QOpenGLTexture.GenerateMipMaps)
+                tex.setMinMagFilters(QOpenGLTexture.LinearMipMapLinear, QOpenGLTexture.Linear)
             tex.setWrapMode(QOpenGLTexture.Repeat)
             self.gl_textures[name] = tex
         for it in self.items:
