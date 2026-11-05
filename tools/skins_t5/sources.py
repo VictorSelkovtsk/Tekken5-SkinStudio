@@ -6,6 +6,7 @@ import json
 import ntpath
 import struct
 import numpy as np
+from tools.stages.container import pack
 
 REPO = Path(sys.executable).resolve().parent if getattr(sys, 'frozen', False) else Path(__file__).resolve().parents[2]
 
@@ -63,6 +64,89 @@ def checked(source):
         if f.ndim != 2 or f.shape[1] != 3 or not len(f) or f.min() < 0 or f.max() >= n:
             raise ValueError('Índices de faces inválidos')
     return source
+
+
+T4_COSTUMES = (
+    (322, 'Paul', 1), (328, 'Paul', 2), (346, 'Law', 1), (352, 'Law', 2), (370, 'Lei', 1), (376, 'Lei', 2),
+    (394, 'King', 1), (400, 'King', 2), (418, 'Yoshimitsu', 1), (424, 'Yoshimitsu', 2), (442, 'Nina', 1),
+    (448, 'Nina', 2), (466, 'Hwoarang', 1), (472, 'Hwoarang', 2), (490, 'Xiaoyu', 1), (496, 'Xiaoyu', 2),
+    (502, 'Xiaoyu', 3), (508, 'Miharu', 1), (514, 'Christie', 1), (520, 'Christie', 2), (526, 'Eddy', 1),
+    (538, 'Jin', 1), (544, 'Jin', 2), (556, 'Jin', 3), (568, 'Julia', 1), (562, 'Julia', 2), (586, 'Kuma', 1),
+    (592, 'Panda', 1), (610, 'Bryan', 1), (616, 'Bryan', 2), (634, 'Heihachi', 1), (640, 'Heihachi', 2),
+    (658, 'Kazuya', 1), (664, 'Kazuya', 2), (682, 'Violet', 1), (688, 'Violet', 2), (694, 'Lee', 1),
+    (700, 'Lee', 2), (706, 'Steve', 1), (712, 'Steve', 2), (730, 'Marduk', 1), (736, 'Marduk', 2),
+    (754, 'Combot', 1), (760, 'Combot', 2))
+
+
+def t4_name(resource):
+    for r, name, n in T4_COSTUMES:
+        if r == resource:
+            return '%s · Tekken 4 · %d' % (name, n)
+    return 'Tekken 4 · %d' % resource
+
+
+def t4_library():
+    return [dict(path='t4:%d:0' % r, name='%s · T4 · %d' % (name, n), kind='t4', thumbnail=None)
+            for r, name, n in T4_COSTUMES]
+
+
+def open_t4(iso):
+    from tools.stages.tekken4 import Archive
+    if not str(iso or '').strip():
+        raise ValueError('Escolha a ISO do Tekken 4 em Pastas e jogo')
+    if not Path(iso).is_file():
+        raise ValueError('ISO do Tekken 4 não encontrada: ' + str(iso))
+    try:
+        return Archive(iso)
+    except (ValueError, KeyError, struct.error, OSError):
+        raise ValueError('Esta ISO não é o Tekken 4 USA (SLUS-20328) original. Use a ISO original, sem modificações.') from None
+
+
+def t4_iso(spec, iso, cache=None):
+    from tools.stages.tekken4 import character_draws
+    from tools.stages.ps2gs import Memory
+    from PIL import Image
+    try:
+        _, resource, part = str(spec).split(':')
+        resource, part = int(resource), int(part)
+    except ValueError:
+        raise ValueError('Modelo do Tekken 4 inválido: ' + str(spec)) from None
+    if not 0 <= part < 3:
+        raise ValueError('Modelo do Tekken 4 inválido: ' + str(spec))
+    raw = open_t4(iso).read(resource)
+    parts = pack(raw)
+    if len(parts) < part + 4 or not parts[part + 3].startswith(b'CHRTK4'):
+        raise ValueError('Recurso %d não é um modelo de personagem do Tekken 4' % resource)
+    draws, bones = character_draws(parts[part + 3])
+    for i, b in enumerate(bones):
+        b['name'] = 'T4 bone %d' % i
+    bank = parts[part]
+    root = Path(cache or REPO / 'cache' / 't4')
+    folder = root / hashlib.sha256(bank).hexdigest()[:24]
+    folder.mkdir(parents=True, exist_ok=True)
+    memory = None
+    textures = {}
+    for d in draws:
+        tex0 = d['tex0']
+        if tex0 not in textures:
+            file = folder / ('%016x.png' % tex0)
+            if not file.is_file():
+                if memory is None:
+                    memory = Memory().load_ngi(bank)
+                memory.texture(tex0).save(file, format='PNG')
+            with Image.open(file) as image:
+                alpha = image.convert('RGBA').getextrema()[3][0] < 255
+            textures[tex0] = (str(file), alpha)
+        d['texture'], alpha = textures[tex0]
+        d['alpha'] = 'texture' if alpha else 'opaque'
+        d['name'] = 'T4_%d_%016x' % (resource, tex0)
+    warnings = []
+    from .cloth import append_cloth
+    cloth_faces = append_cloth(raw, draws, root / 'cloth')
+    if cloth_faces:
+        warnings.append('Tecido CLT recuperado: %d triângulos. Pesos iniciais transferidos do corpo para edição; a simulação física T4 não foi convertida.' % cloth_faces)
+    return checked({'kind': 't4', 'name': t4_name(resource), 'path': '%s' % spec,
+                    'bones': bones, 'meshes': draws, 'warnings': warnings})
 
 
 def t4(path, cache=None):
@@ -275,7 +359,9 @@ def xps(path):
                     'meshes': meshes, 'warnings': warnings})
 
 
-def load(path, cache=None):
+def load(path, cache=None, t4_iso_path=None):
+    if str(path).startswith('t4:'):
+        return t4_iso(path, t4_iso_path, cache=Path(cache).parent / 't4' if cache else None)
     path = Path(path)
     if path.name.lower().endswith('.t5skin.json'):
         data=json.loads(path.read_text(encoding='utf8'))
@@ -287,9 +373,6 @@ def load(path, cache=None):
                             meshes=data['meshes'],warnings=data.get('warnings',[]),base_index=data['base_index']))
     if path.name.lower() == 'scene.json':
         return t4(path, cache=Path(cache).parent/'t4' if cache else None)
-    if path.suffix.lower() == '.kmd':
-        from .taghd import read
-        return checked(read(path, cache=cache))
     if path.suffix.lower() in ('.mesh', '.xps', '.ascii'):
         return xps(path)
-    raise ValueError('Escolha scene.json do T4, .kmd do Tag HD, .mesh, .mesh.ascii ou .xps')
+    raise ValueError('Escolha um modelo .mesh, .mesh.ascii ou .xps')

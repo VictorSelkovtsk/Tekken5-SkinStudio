@@ -1,8 +1,5 @@
 import numpy as np
 
-TAG_FACE={7:85,8:96,9:105,10:85,11:87,12:89,13:90,14:91,
-          15:94,16:103,17:93,18:102,19:101,20:110,21:100,22:109,
-          23:99,24:108,25:98,26:107,27:97,28:106}
 NAMES={85:'mandíbula',86:'lábio inferior E',87:'canto da boca E',
        88:'lábio inferior D',89:'canto da boca D',90:'língua',91:'ponta da língua',
        92:'lábio superior central',93:'nariz E',94:'bochecha E',95:'bochecha alta E',
@@ -16,12 +13,6 @@ def native_face(bones):
     return (len(bones)>110 and bones[85]['parent']==6 and
             all(bones[i]['parent']==85 for i in (86,87,88,89,90)) and
             bones[91]['parent']==90 and all(bones[i]['parent']==6 for i in range(92,111)))
-
-def tag_face(source,target,settings):
-    bones=source['bones']
-    return (source['kind']=='taghd' and settings.get('facial',True) and native_face(target)
-            and len(bones)>=98 and bones[29]['parent']==2 and bones[7]['parent']==6
-            and bones[10]['parent']==7 and bones[21]['parent']==6)
 
 def split_lower_lip(meshes,mapping,source,target,source_id=10):
     if mapping[source_id]!=85:return

@@ -35,6 +35,7 @@ QTabBar::tab {{ background: {BG}; color: {MUTED}; border: 1px solid {BORDER}; bo
                padding: 5px 14px; margin-right: 1px; }}
 QTabBar::tab:selected {{ background: {PANEL}; color: {TEXT}; border-top: 2px solid {ACCENT}; }}
 QTabBar::tab:hover:!selected {{ color: {TEXT}; }}
+QTabBar::tab:disabled {{ color: #55555a; background: #1e1e20; }}
 QTreeView, QListView, QTableView, QPlainTextEdit, QTextEdit {{
     background: {PANEL}; alternate-background-color: #29292b; border: 1px solid {BORDER};
     selection-background-color: {SELECT}; selection-color: white; }}

@@ -26,7 +26,7 @@ from .viewport import Viewport, np_to_qimage
 
 VERSION = '1.0.0'
 AUTHOR = 'VictorSelkovtsk'
-KINDS = (('t5', 'Tekken 5'), ('t4', 'Tekken 4'), ('taghd', 'Tag HD'), ('xps', 'XPS'))
+KINDS = (('t5', 'Tekken 5'), ('t4', 'Tekken 4'), ('xps', 'XPS'))
 VIEWS = ('Textura', 'Cores por osso', 'Peso de um osso', 'Física do jogo')
 
 
@@ -94,8 +94,7 @@ class SettingsDialog(QDialog):
         lay.addLayout(row)
         grid = QGridLayout()
         self.fields = {}
-        rows = (('iso', _t('ISO original do Tekken 5'), 'iso'), ('t4', _t('Exports do Tekken 4'), 'folder'),
-                ('taghd', _t('Modelos .kmd do Tag Tournament HD PS3'), 'folder'),
+        rows = (('iso', _t('ISO original do Tekken 5'), 'iso'), ('t4', _t('ISO do Tekken 4 (opcional)'), 'iso4'),
                 ('blender', _t('Blender 2.79 · executável'), 'exe'))
         for r, (key, label, kind) in enumerate(rows):
             edit = QLineEdit(str(cfg.get(key, '') or ''))
@@ -108,7 +107,8 @@ class SettingsDialog(QDialog):
             grid.addWidget(button, r, 2)
             self.fields[key] = edit
         lay.addLayout(grid)
-        note = QLabel(_t('Destino compatível: Tekken 5 PS2 USA · SLUS-21059 1.00.'))
+        note = QLabel(_t('Destino compatível: Tekken 5 PS2 USA · SLUS-21059 1.00.') + '\n' +
+                      _t('Fonte Tekken 4: ISO PS2 USA · SLUS-20328 1.00. Os modelos são lidos direto da ISO, sem alterá-la.'))
         note.setObjectName('Hint')
         lay.addWidget(note)
         self.status = QLabel()
@@ -130,6 +130,8 @@ class SettingsDialog(QDialog):
             path = QFileDialog.getExistingDirectory(self, _t('Escolha a pasta'), start)
         elif kind == 'iso':
             path, _ = QFileDialog.getOpenFileName(self, _t('ISO original do Tekken 5'), start, 'ISO (*.iso)')
+        elif kind == 'iso4':
+            path, _ = QFileDialog.getOpenFileName(self, _t('ISO do Tekken 4 (opcional)'), start, 'ISO (*.iso)')
         else:
             path, _ = QFileDialog.getOpenFileName(self, 'Blender 2.79', start, 'blender.exe (blender.exe)')
         if path:
@@ -726,6 +728,10 @@ class MainWindow(QMainWindow):
             it = QTreeWidgetItem([_t('Abra um .xps, .mesh ou .mesh.ascii pelo botão abaixo.')])
             it.setFlags(Qt.NoItemFlags)
             self.library.addTopLevelItem(it)
+        if self.kind == 't4' and not any(i['kind'] == 't4' for i in self.state.get('library', [])):
+            it = QTreeWidgetItem([_t('Indique a ISO do Tekken 4 em Arquivo › Pastas e jogo.')])
+            it.setFlags(Qt.NoItemFlags)
+            self.library.addTopLevelItem(it)
         for item in self.state.get('library', []):
             if item['kind'] != self.kind or (text and text not in item['name'].lower()):
                 continue
@@ -746,7 +752,7 @@ class MainWindow(QMainWindow):
             self.load_source(data[1])
 
     def _open_file(self):
-        flt = _t('Modelos e exports') + ' (*.json *.kmd *.xps *.mesh *.ascii);;' + _t('Todos') + ' (*.*)'
+        flt = _t('Modelos XPS') + ' (*.xps *.mesh *.ascii);;' + _t('Todos') + ' (*.*)'
         path, _ = QFileDialog.getOpenFileName(self, _t('Escolher arquivo'), '', flt)
         if path:
             self.load_source(path)
@@ -790,7 +796,7 @@ class MainWindow(QMainWindow):
             self.sp_z.setValue(0)
             self.sp_yaw.setValue(0)
             self.chk_hair.setChecked(False)
-            self.chk_retarget.setChecked(not xps and not edit and not low.endswith('scene.json'))
+            self.chk_retarget.setChecked(not xps and not edit and not low.endswith('scene.json') and not low.startswith('t4:'))
         req = dict(self.request(), path=path)
 
         def work():
@@ -1257,7 +1263,6 @@ class MainWindow(QMainWindow):
         self.cmb_char.setEnabled(not t5)
         self.cmb_base.setEnabled(not t5)
         self.tabs.setTabEnabled(2, has and not t5)
-        self.tabs.setTabEnabled(4, has and not t5)
         if self.editing:
             self.btn_convert.setText(_t('Salvar alterações no mod'))
             self.edit_banner.setText(_t('Editando “{0}”.', self.editing['name']))
@@ -1271,6 +1276,12 @@ class MainWindow(QMainWindow):
         self.btn_reopen_blender.setEnabled(bool(self.blender_project))
         if self.blender_project:
             self.blender_status.setText(_t('Aberto no Blender:') + ' ' + str(self.blender_project.get('blend', '')))
+        elif t5:
+            self.blender_status.setText(_t('Roupas originais do Tekken 5 não são editadas no Blender. Para trocar só as texturas, use a aba Materiais.'))
+        elif not has:
+            self.blender_status.setText(_t('Carregue uma skin do Tekken 4 ou XPS (painel Fontes) para editar no Blender.'))
+        else:
+            self.blender_status.setText(_t('Pronto para abrir no Blender.'))
         self.btn_build.setEnabled(any(m['enabled'] for m in self.studio.config.get('mods', [])) and not self.job_timer.isActive())
 
     def _cancel_edit(self):

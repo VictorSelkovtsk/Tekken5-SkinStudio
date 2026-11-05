@@ -8,26 +8,11 @@ from tools.mod.port_t4_julia_t5 import bone_map, model, container, texture_pictu
 from .sources import worlds
 import numpy as np
 from PIL import Image, ImageOps
-from .facial import TAG_FACE,tag_face,split_lower_lip,native_face
+from .facial import split_lower_lip,native_face
 from .rig import describe
 from .xps_mapping import suggest as suggest_xps
 
 FIELDS = ('positions', 'normals', 'uv0', 'weights', 'indices')
-
-
-def tag_accessory_anchors(source):
-    if source['kind'] != 'taghd': return {}
-    anchors = {i:6 for i in range(7,min(29,len(source['bones'])))}
-    if len(source['bones']) >= 98:
-        anchors.update({3:2,4:2,30:29,32:31,33:31,35:34,36:34,37:34,
-                        55:54,57:56,58:56,60:59,61:59,62:59,
-                        80:81,82:81,83:81,85:84,86:84,
-                        89:90,91:90,92:90,94:93,95:93})
-    for i in range(98, len(source['bones'])):
-        parent = source['bones'][i]['parent']
-        while parent >= 98: parent = source['bones'][parent]['parent']
-        if parent >= 0: anchors[i] = parent
-    return anchors
 
 
 def material_key(mesh):
@@ -58,7 +43,7 @@ def alignment(source, target, settings):
     if not math.isfinite(angle): raise ValueError('Rotação inválida')
     cs, sn = math.cos(angle), math.sin(angle)
     matrix = np.array([[cs,0,sn],[0,1,0],[-sn,0,cs]])
-    offset = np.asarray(settings.get('offset', [0,1127,0] if source['kind'] in ('t4','taghd') else [0,0,0]), float)
+    offset = np.asarray(settings.get('offset', [0,1127,0] if source['kind'] == 't4' else [0,0,0]), float)
     if offset.shape != (3,) or not np.isfinite(offset).all(): raise ValueError('Posição inválida')
     return scale, matrix, offset
 
@@ -77,16 +62,6 @@ def suggested_mapping(source, target, settings):
         mapping.update({i:j for i,j in bone_map().items() if i < len(sw) and j < len(tw) and i < 111})
         if len(sw) == 123 and len(tw) == 132:
             mapping.update(bone_map())
-    if source['kind'] == 'taghd' and len(sw) >= 98 and source['bones'][29]['parent'] == 2:
-        mapping.update({0:1,1:2,2:3,5:5,6:6,29:7,30:7,31:8,32:8,33:8,
-                        34:9,35:9,36:9,37:9,38:10,54:11,55:11,56:12,57:12,58:12,
-                        59:13,60:13,61:13,62:13,63:14,79:4,80:15,81:15,82:15,83:15,
-                        84:16,85:16,86:16,87:17,88:21,89:18,90:18,91:18,92:18,
-                        93:19,94:19,95:19,96:20,97:22})
-        mapping.update({i:55+i-39 for i in range(39,54)})
-        mapping.update({i:70+i-64 for i in range(64,79)})
-        for i, parent in tag_accessory_anchors(source).items(): mapping[i] = mapping[parent]
-        if tag_face(source,target,settings):mapping.update(TAG_FACE)
     if source['kind'] == 'xps':
         mapping,_=suggest_xps(source,target,sp,tp,settings)
     mapping.update({int(i):int(j) for i,j in settings.get('mapping',{}).items()})
@@ -102,13 +77,9 @@ def prepared(source, target, settings):
     sw[:,:3,3] = sw[:,:3,3] @ rotation.T * scale + offset
     sw[:,:3,:3] = rotation @ sw[:,:3,:3]
     transforms = np.asarray([tw[mapping[i]] @ np.linalg.inv(m) for i,m in enumerate(sw)])
-    if source['kind'] in ('taghd','xps'):
+    if source['kind'] == 'xps':
         transforms[:,:3,:3] = np.eye(3)
         transforms[:,:3,3] = tw[[mapping[i] for i in range(len(sw))],:3,3]-sw[:,:3,3]
-    explicit = {int(i) for i in settings.get('mapping', {})}
-    for i, parent in tag_accessory_anchors(source).items():
-        if 7<=i<=28 or i not in explicit or mapping[i] == mapping[parent]:
-            transforms[i] = transforms[parent]
     enabled = settings.get('materials', {})
     meshes = []
     for index, mesh in enumerate(source['meshes']):
@@ -129,7 +100,6 @@ def prepared(source, target, settings):
         m['material_key'] = material_key(mesh)
         meshes.append(m)
     if not meshes: raise ValueError('Ative ao menos um material')
-    if tag_face(source,target,settings):split_lower_lip(meshes,mapping,source,target)
     if source['kind']=='xps' and native_face(target):
         from .xps_mapping import normalized
         for i,b in enumerate(source['bones']):
@@ -249,7 +219,7 @@ def convert(source, package, settings, output):
         config = settings.get('materials',{}).get(key,{})
         file = Path(config.get('texture') or items[0]['texture'])
         if not file.is_file(): raise ValueError('Textura ausente: '+str(file))
-        im = crop_texture(file,items) if source['kind'] in ('t4','taghd','t5edit') and not config.get('texture') else Image.open(file).convert('RGBA')
+        im = crop_texture(file,items) if source['kind'] in ('t4','t5edit') and not config.get('texture') else Image.open(file).convert('RGBA')
         if im.width > 1024 or im.height > 1024: im.thumbnail((1024,1024))
         w,h = [1 << (max(1,v)-1).bit_length() for v in im.size]
         if (w,h) != im.size: im = im.resize((w,h),Image.Resampling.LANCZOS)

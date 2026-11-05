@@ -15,7 +15,7 @@ import traceback
 import webbrowser
 from urllib.parse import urlparse
 from .game import Archive, catalogue, build_iso, NAMES
-from .sources import load, worlds
+from .sources import load, worlds, open_t4, t4_library
 from .convert import skeleton, prepared, material_key,alignment
 from .xps_mapping import suggest as suggest_xps
 from .convert import convert as native_convert
@@ -32,7 +32,7 @@ class StudioServer(ThreadingHTTPServer):
     def server_bind(self):
         if os.name=='nt':self.socket.setsockopt(socket.SOL_SOCKET,socket.SO_EXCLUSIVEADDRUSE,1)
         super().server_bind()
-DEFAULT_ISO = DEFAULT_TAG = DEFAULT_T4 = ''
+DEFAULT_ISO = DEFAULT_T4 = ''
 
 
 def open_iso(path):
@@ -48,7 +48,9 @@ class Studio:
         self.home = Path(home); self.home.mkdir(parents=True,exist_ok=True)
         self.file = self.home/'studio.json'
         self.config = json.loads(self.file.read_text(encoding='utf8')) if self.file.exists() else {
-            'iso':DEFAULT_ISO,'t4':DEFAULT_T4,'taghd':DEFAULT_TAG,'mods':[]}
+            'iso':DEFAULT_ISO,'t4':DEFAULT_T4,'mods':[]}
+        self.config.pop('taghd',None)
+        if str(self.config.get('t4','')).strip() and not Path(self.config['t4']).is_file():self.config['t4']=''
         self.source = None; self.archive = None; self.files = {}; self.token = secrets.token_urlsafe(32)
         self.job = {'state':'idle','message':'Pronto para importar','error':None}
         try:
@@ -83,25 +85,8 @@ class Studio:
             self.archive = open_iso(self.config['iso'])
         return self.archive
     def library(self):
-        result = []
-        t4 = Path(self.config['t4']) if self.config['t4'].strip() else None
-        taghd = Path(self.config['taghd']) if self.config['taghd'].strip() else None
-        for p in sorted(t4.glob('Character_*/scene.json')) if t4 else []:
-            try:
-                m = json.loads(p.read_text(encoding='utf8'))
-                thumb = next(p.parent.glob('*.png'),None)
-                result.append(dict(path=str(p),name='Julia · T4 · 1P' if '0568_0' in str(p) else m['name'].replace('Character_','T4 · '),
-                                   kind='t4',thumbnail=self.register(thumb)))
-            except (OSError,ValueError,KeyError): continue
-        names = {'jul':'Julia','jun':'Jun','cha':'Michelle','ann':'Anna','nin':'Nina','xia':'Xiaoyu',
-                 'pau':'Paul','kin':'King','kng':'King','kaz':'Kazuya','jin':'Jin','law':'Law',
-                 'lei':'Lei','yosh':'Yoshimitsu','yos':'Yoshimitsu','hwo':'Hwoarang','bry':'Bryan',
-                 'hei':'Heihachi','lee':'Lee','edd':'Eddy','dev':'Devil','unk':'Unknown','mok':'Mokujin'}
-        for p in sorted(taghd.glob('*.kmd')) if taghd else []:
-            result.append(dict(path=str(p),name=names.get(p.stem[:3],p.stem)+' · '+p.stem,
-                               kind='taghd',thumbnail=None))
-        result.sort(key=lambda x:('Julia' not in x['name'],x['kind'],x['name']))
-        return result
+        t4 = str(self.config.get('t4', '') or '').strip()
+        return t4_library() if t4 and Path(t4).is_file() else []
     def preview(self, data, source=None):
         source = self.source if source is None else source
         if source is None: raise ValueError('Escolha uma skin primeiro')
@@ -219,9 +204,10 @@ class Studio:
             if code not in i18n.available(self.home):raise ValueError('Idioma indisponível')
             self.config['lang']=code;self.save();return {'lang':code}
         if route == '/api/config':
-            candidate = {k:str(data.get(k,self.config[k])) for k in ('iso','t4','taghd')}
+            candidate = {k:str(data.get(k,self.config.get(k,''))) for k in ('iso','t4')}
             if 'blender' in data:candidate['blender']=str(data['blender'])
             open_iso(candidate['iso'])
+            if candidate['t4'].strip():open_t4(candidate['t4'])
             self.config.update(candidate);self.archive=None;self.save();return self.api('/api/init',{})
         if route == '/api/pick':
             executable = Path(sys.executable)
@@ -232,7 +218,7 @@ class Studio:
             if result.returncode: raise ValueError(result.stderr.strip() or 'Não foi possível abrir a seleção de arquivo')
             return {'path':result.stdout.strip()}
         if route == '/api/source':
-            source=load(data['path'],cache=self.home/'cache/taghd')
+            source=load(data['path'],cache=self.home/'cache/sources',t4_iso_path=self.config.get('t4'))
             if source['kind']=='t5edit':data=dict(data,base_index=source['base_index'])
             result=self.preview(data,source);self.source=source
             if source['kind']=='t5edit':result['base_index']=source['base_index']
@@ -318,8 +304,8 @@ class Studio:
                 result=self.original(base,textures);self.source=dict(kind='t5',base_index=base,name=result['name'],path='')
                 result.update(path='',base_index=base,mod=mod);return result
             if route.endswith('open'):
-                if not Path(mod['source']).is_file():raise ValueError('Modelo de origem deste mod não encontrado: '+mod['source'])
-                source=load(mod['source'],cache=self.home/'cache/taghd')
+                if not str(mod['source']).startswith('t4:') and not Path(mod['source']).is_file():raise ValueError('Modelo de origem deste mod não encontrado: '+mod['source'])
+                source=load(mod['source'],cache=self.home/'cache/sources',t4_iso_path=self.config.get('t4'))
                 result=self.preview(dict(base_index=mod['base_index'],settings=mod.get('settings',{})),source)
                 self.source=source;result.update(path=mod['source'],base_index=mod['base_index'],mod=mod);return result
             if route.endswith('delete-info'):return inspect(self.home,mod)
@@ -401,7 +387,7 @@ def picker(kind):
     else:
         types={'iso':[('Tekken 5 USA 1.00','*.iso')],
                'texture':[('Texturas','*.png *.dds *.tga *.jpg *.bmp')],
-               'source':[('Modelos e exports','*.json *.kmd *.xps *.mesh *.ascii'),('Todos','*.*')]}
+               'source':[('Modelos XPS','*.xps *.mesh *.ascii'),('Todos','*.*')]}
         value=filedialog.askopenfilename(parent=root,title='Tekken 5 Skin Studio',filetypes=types.get(kind,types['source']))
     root.destroy();sys.stdout.reconfigure(encoding='utf8');print(value)
 

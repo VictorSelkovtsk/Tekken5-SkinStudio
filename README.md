@@ -11,10 +11,11 @@ Autor: **VictorSelkovtsk** · Licença: **GPL-3.0**
 1. Baixe o `Tekken5-SkinStudio-<versão>.zip` da página de releases e extraia numa pasta com espaço livre.
 2. Abra o `Tekken5_SkinStudio.exe`.
 3. Na **configuração inicial**, indique a sua ISO **original** do Tekken 5. A ferramenta confere se é a versão USA 1.00 e recusa outras. Para mudar depois, use *Arquivo › Pastas e jogo*.
+4. Para importar roupas do Tekken 4, indique também a ISO do **Tekken 4 USA (SLUS-20328)** no mesmo lugar. Ela é opcional e só é lida.
 
 O pacote já inclui o Blender 2.79 portátil, na pasta `runtime`. Não é preciso instalar mais nada.
 
-Nenhum arquivo do jogo acompanha o programa. A ISO original nunca é alterada: os mods vão para uma **ISO nova**, gerada pelo Studio.
+Nenhum arquivo do jogo acompanha o programa. As ISOs nunca são alteradas: os mods vão para uma **ISO nova** do Tekken 5, gerada pelo Studio.
 
 ## Idiomas
 
@@ -36,7 +37,7 @@ No painel **Fontes**, a opção **Tekken 5** lista todas as roupas do jogo, por 
 
 ## Importar uma roupa de outro jogo
 
-1. Escolha uma fonte: **Tekken 4** (exports `scene.json`), **Tag HD** (`.kmd` da versão PS3) ou **XPS** (`.xps`, `.mesh`, `.mesh.ascii`, com as texturas ao lado do modelo).
+1. Escolha uma fonte: **Tekken 4** (as roupas são lidas direto da ISO do Tekken 4, por personagem) ou **XPS** (`.xps`, `.mesh`, `.mesh.ascii`, com as texturas ao lado do modelo).
 2. Escolha o personagem de destino e a roupa base. A base fornece o esqueleto, as animações e os dados nativos do Tekken 5.
 3. Escolha **Substituir roupa** ou **Criar novo slot**. O limite é de cinco roupas por personagem. Xiaoyu já tem cinco e só aceita substituição; Jinpachi e Eddy não recebem slots novos.
 4. Em **Ossos e proporções**, confira escala, orientação, altura e a associação dos ossos. O **Teste de pesos** mostra a deformação de um osso e seus filhos.
@@ -98,7 +99,7 @@ Para gerar o `.exe` (precisa do PyInstaller): `build_exe.bat`.
 | --- | --- |
 | `tools/skins_t5/qt/` | Interface (PyQt5). |
 | `studio.py` | Operações do Studio: fontes, prévia, mods, ISO e Blender. |
-| `sources.py`, `taghd.py` | Leitura das fontes (Tekken 4, Tag HD, XPS). |
+| `sources.py` | Leitura das fontes (ISO do Tekken 4 e XPS). |
 | `convert.py`, `native.py` | Adaptação ao esqueleto e pacote nativo do Tekken 5. |
 | `original.py`, `anim64.py` | Roupas originais, mods de textura e animações do jogo. |
 | `game.py` | Catálogo de roupas, novos slots e geração da ISO. |
