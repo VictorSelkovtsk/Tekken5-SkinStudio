@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime
 import os
+import re
 import sys
 import time
 import traceback
@@ -165,6 +166,7 @@ class MainWindow(QMainWindow):
         self.mapping: dict = {}
         self.t5_textures: dict = {}
         self.editing: dict | None = None
+        self.readonly: dict | None = None
         self.blender_project = None
         self.current_path = ''
         self.kind = 't5'
@@ -305,6 +307,7 @@ class MainWindow(QMainWindow):
         m.addAction(_t('Abrir pasta do Studio'), lambda: os.startfile(str(self.studio.home)))
         m.addSeparator()
         m.addAction(_t('Gerar ISO com mods'), self._build_iso)
+        m.addAction(_t('Importar mod…'), self._import_mod)
         m.addAction(_t('Salvar imagem do viewport…'), self._save_screenshot)
         m.addSeparator()
         m.addAction(_t('Sair'), self.close)
@@ -541,7 +544,8 @@ class MainWindow(QMainWindow):
         self.mod_tree.itemDoubleClicked.connect(lambda it, _: self._open_mod(it))
         lay.addWidget(self.mod_tree, 1)
         row = QHBoxLayout()
-        b1 = QPushButton(_t('Editar'))
+        b1 = QPushButton(_t('Abrir'))
+        b1.setToolTip(_t('Abre o mod para editar. Mods importados abrem só para visualizar.'))
         b1.clicked.connect(lambda: self._open_mod(self.mod_tree.currentItem()))
         b2 = QPushButton(_t('Excluir…'))
         b2.clicked.connect(lambda: self._delete_mod(self.mod_tree.currentItem()))
@@ -559,6 +563,16 @@ class MainWindow(QMainWindow):
         self.btn_build.setDefault(True)
         self.btn_build.clicked.connect(self._build_iso)
         lay.addWidget(self.btn_build)
+        share = QHBoxLayout()
+        self.btn_export_mod = QPushButton(_t('Gerar apenas arquivo do mod…'))
+        self.btn_export_mod.setToolTip(_t('Salva o mod selecionado num arquivo .t5mod para compartilhar. Quem recebe importa o arquivo e gera a ISO com a própria ISO original.'))
+        self.btn_export_mod.clicked.connect(lambda: self._export_mod(self.mod_tree.currentItem()))
+        self.btn_import_mod = QPushButton(_t('Importar mod…'))
+        self.btn_import_mod.setToolTip(_t('Instala um arquivo .t5mod recebido de outra pessoa.'))
+        self.btn_import_mod.clicked.connect(self._import_mod)
+        share.addWidget(self.btn_export_mod)
+        share.addWidget(self.btn_import_mod)
+        lay.addLayout(share)
         return w
 
     def log(self, text):
@@ -773,7 +787,8 @@ class MainWindow(QMainWindow):
             return self.studio.api('/api/t5/costume', {'base_index': base, 'textures': textures})
 
         def done(data):
-            self.editing = data.get('mod')
+            self.readonly = data.get('mod') if data.get('readonly') else None
+            self.editing = None if self.readonly else data.get('mod')
             self.t5_textures = dict(data.get('textures') or textures)
             self.material_cfg, self.mapping, self.blender_project = {}, {}, None
             self.current_path = 't5:%d' % data['base_index']
@@ -781,8 +796,10 @@ class MainWindow(QMainWindow):
                 cid = self.editing['character'] if self.editing else data['character']
                 self._select_slot(cid, data['base_index'])
             self.show_preview(data, reset=True)
-            self.mod_name.setText(self.editing['name'] if self.editing else _t('Texturas · {0}', data['name']))
-            self.job_label.setText(_t('Roupa original carregada. Troque texturas na aba Materiais ou toque uma animação do jogo.'))
+            self.mod_name.setText(self.editing['name'] if self.editing else self.readonly['name'] if self.readonly else _t('Texturas · {0}', data['name']))
+            self.job_label.setText(_t('Mod importado aberto para visualizar. Toque as animações do jogo para conferir.') if self.readonly else
+                                   _t('Roupa original carregada. Troque texturas na aba Materiais ou toque uma animação do jogo.'))
+            self._update_controls()
         self.run(work, done, 'Lendo a roupa original…')
 
     def load_source(self, path, mod=None):
@@ -806,6 +823,7 @@ class MainWindow(QMainWindow):
 
         def done(data):
             self.editing = data.get('mod')
+            self.readonly = None
             self.blender_project = None
             self.t5_textures = {}
             if data.get('kind') == 't5edit' or self.editing:
@@ -833,7 +851,7 @@ class MainWindow(QMainWindow):
         self.run(work, done, 'Lendo modelo, texturas e esqueleto…')
 
     def _update_preview(self):
-        if not self.preview:
+        if not self.preview or self.readonly:
             return
         if self.is_t5():
             base = self.preview['base_index']
@@ -1189,6 +1207,8 @@ class MainWindow(QMainWindow):
         menu.exec_(self.mat_tree.mapToGlobal(pos))
 
     def _swap_material(self, item):
+        if self.readonly:
+            return
         if item is None or not self.preview:
             return
         path, _ = QFileDialog.getOpenFileName(self, _t('Nova textura'), '', _t('Texturas') + ' (*.png *.dds *.tga *.jpg *.jpeg *.bmp)')
@@ -1202,6 +1222,8 @@ class MainWindow(QMainWindow):
         self._update_preview()
 
     def _restore_material(self, item):
+        if self.readonly:
+            return
         if item is None:
             return
         key = item.data(0, Qt.UserRole)
@@ -1263,19 +1285,24 @@ class MainWindow(QMainWindow):
         self.cmb_char.setEnabled(not t5)
         self.cmb_base.setEnabled(not t5)
         self.tabs.setTabEnabled(2, has and not t5)
-        if self.editing:
+        if self.readonly:
+            self.btn_convert.setText(_t('Salvar texturas como mod'))
+            self.edit_banner.setText(_t('Visualizando o mod importado “{0}”. Ele não pode ser editado aqui.', self.readonly['name']))
+        elif self.editing:
             self.btn_convert.setText(_t('Salvar alterações no mod'))
             self.edit_banner.setText(_t('Editando “{0}”.', self.editing['name']))
         else:
             self.btn_convert.setText(_t('Salvar texturas como mod') if t5 else _t('Converter e adicionar aos mods'))
             self.edit_banner.setText('')
         self.btn_cancel_edit.setVisible(bool(self.editing))
-        self.btn_convert.setEnabled(has and not self.job_timer.isActive())
+        self.btn_convert.setEnabled(has and not self.readonly and not self.job_timer.isActive())
         self.btn_edit_blender.setEnabled(has and not t5)
         self.btn_reload_blender.setEnabled(bool(self.blender_project))
         self.btn_reopen_blender.setEnabled(bool(self.blender_project))
         if self.blender_project:
             self.blender_status.setText(_t('Aberto no Blender:') + ' ' + str(self.blender_project.get('blend', '')))
+        elif self.readonly:
+            self.blender_status.setText(_t('Mods importados não são editados no Blender.'))
         elif t5:
             self.blender_status.setText(_t('Roupas originais do Tekken 5 não são editadas no Blender. Para trocar só as texturas, use a aba Materiais.'))
         elif not has:
@@ -1286,6 +1313,7 @@ class MainWindow(QMainWindow):
 
     def _cancel_edit(self):
         self.editing = None
+        self.readonly = None
         self._update_controls()
         self._slot_info()
         self.job_label.setText(_t('Edição cancelada. O mod não foi alterado.'))
@@ -1368,6 +1396,8 @@ class MainWindow(QMainWindow):
                                                 _t('Novo slot') if m['mode'] == 'add' else _t('Substitui {0}', slot),
                                                 _t('{0} triângulos', '{:,}'.format(m['report'].get('triangles', 0)).replace(',', '.')),
                                                 self._bytes(m['report']['bytes']))
+            if m.get('imported'):
+                detail += ' · ' + _t('importado')
             it = QTreeWidgetItem([m['name'], detail])
             it.setFlags(it.flags() | Qt.ItemIsUserCheckable)
             it.setCheckState(0, Qt.Checked if m['enabled'] else Qt.Unchecked)
@@ -1401,7 +1431,7 @@ class MainWindow(QMainWindow):
         mod = self._mod(item)
         if mod is None:
             return
-        if mod.get('kind') == 'textures':
+        if mod.get('kind') in ('textures', 'imported'):
             self.load_original(mod['base_index'], mod=mod)
         else:
             self.load_source(mod['source'], mod=mod)
@@ -1437,6 +1467,53 @@ class MainWindow(QMainWindow):
             self.error(exc)
             return
         self._start_job(job)
+
+    def _export_mod(self, item):
+        mod = self._mod(item)
+        if mod is None:
+            self.error(ValueError(_t('Selecione um mod na lista.')))
+            return
+        name = re.sub(r'[^\w \-().,]', '_', mod['name']).strip(' .') or 'mod'
+        start = str(Path(self.settings.value('share_dir', str(Path.home()))) / (name + '.t5mod'))
+        path, _ = QFileDialog.getSaveFileName(self, _t('Gerar apenas arquivo do mod…'), start, _t('Mod do Skin Studio') + ' (*.t5mod)')
+        if not path:
+            return
+        self.settings.setValue('share_dir', str(Path(path).parent))
+        try:
+            result = self.api('/api/mod/export', {'id': mod['id'], 'path': path, 'version': VERSION})
+        except (ValueError, OSError) as exc:
+            self.error(exc)
+            return
+        self.log('✔ ' + _t('Arquivo do mod salvo: {0} ({1})', result['path'], self._bytes(result['bytes'])))
+        self.job_label.setText(_t('Arquivo do mod salvo. Compartilhe o .t5mod: quem recebe usa Importar mod….'))
+
+    def _import_mod(self):
+        start = self.settings.value('share_dir', str(Path.home()))
+        path, _ = QFileDialog.getOpenFileName(self, _t('Importar mod…'), start, _t('Mod do Skin Studio') + ' (*.t5mod)')
+        if not path:
+            return
+        self.settings.setValue('share_dir', str(Path(path).parent))
+        try:
+            info = self.api('/api/mod/import-info', {'path': path})
+        except (ValueError, OSError) as exc:
+            self.error(exc)
+            return
+        what = _t('Troca de texturas') if info['kind'] == 'textures' else (_t('Novo slot') if info['mode'] == 'add' else _t('Substitui {0}', info['slot']))
+        text = (_t('Instalar este mod?') + '\n\n' + info['name'] + '\n' + info['character_name'] + ' · ' + what + '\n\n' +
+                _t('O arquivo foi conferido: é uma roupa válida para a sua ISO. Depois de instalado, ative o mod e gere a ISO.'))
+        if QMessageBox.question(self, _t('Importar mod…'), text, QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes) != QMessageBox.Yes:
+            return
+        try:
+            mod = self.api('/api/mod/import', {'path': path})
+        except (ValueError, OSError) as exc:
+            self.error(exc)
+            return
+        self.log('✔ ' + _t('Mod importado: {0}', mod['name']))
+        if mod.get('conflict'):
+            self.log('⚠ ' + _t('O mod foi instalado desligado: outro mod ativo já usa essa roupa ou o limite de roupas do personagem. Desligue o outro para usar este.'))
+        self._fill_mods()
+        self._slot_info()
+        self.tabs.setCurrentIndex(5)
 
     def _blender_edit(self):
         try:

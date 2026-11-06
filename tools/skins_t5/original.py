@@ -77,8 +77,8 @@ def texture_images(package, folder):
     return out
 
 
-def preview(archive, base, home, register, overrides=None):
-    package = archive.read(resource(base))
+def preview(archive, base, home, register, overrides=None, package=None):
+    package = archive.read(resource(base)) if package is None else package
     digest = hashlib.sha256(package).hexdigest()[:16]
     images = texture_images(package, Path(home) / 'cache' / 't5' / digest)
     table = picture_table(pack(package)[1])

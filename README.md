@@ -72,10 +72,21 @@ No Blender, **Importar base original T5** traz a roupa original na camada 2, par
 
 ## Mods
 
-- **Editar:** reabre a skin com tudo o que foi salvo no mod; **Salvar alterações no mod** a reconverte no mesmo lugar.
+- **Abrir:** reabre a skin com tudo o que foi salvo no mod; **Salvar alterações no mod** a reconverte no mesmo lugar.
 - **Excluir…:** move a pasta do mod para `mods/.lixeira`. Para recuperar, mova a pasta de volta para `mods` e abra o Studio de novo: o mod volta desligado.
 - **Tirar uma skin do jogo:** desative o mod e gere outra ISO a partir da original. ISOs já geradas não mudam.
 - Dois mods não podem substituir a mesma roupa ao mesmo tempo.
+
+## Compartilhar mods
+
+Não é preciso saber usar o Blender para instalar uma skin feita por outra pessoa.
+
+- **Gerar apenas arquivo do mod…** (aba **Mods da ISO**) salva o mod selecionado num arquivo `.t5mod`.
+- **Importar mod…** (mesma aba ou menu *Arquivo*) confere o `.t5mod` e o coloca na lista. Depois é só ativar e clicar em **Gerar ISO com mods**: quem recebe usa a própria ISO original.
+- Um mod de texturas leva só as imagens trocadas; elas são aplicadas sobre a roupa original da ISO de quem importa.
+- Uma skin importada leva o pacote já convertido. Ela pode ser ligada, desligada, aberta para ver as animações, exportada de novo e excluída, mas não editada, porque o modelo de origem fica com quem a criou.
+- A importação recusa arquivos estranhos, skins corrompidas, que não cabem na memória do PS2 ou que não combinam com o esqueleto da roupa base. Se outro mod ativo já usa a mesma roupa, o mod importado entra desligado.
+- Uma skin convertida de outro jogo carrega a geometria e as texturas do modelo de origem. Compartilhe apenas o que você tem direito de distribuir.
 
 ## Limites
 
@@ -103,6 +114,7 @@ Para gerar o `.exe` (precisa do PyInstaller): `build_exe.bat`.
 | `convert.py`, `native.py` | Adaptação ao esqueleto e pacote nativo do Tekken 5. |
 | `original.py`, `anim64.py` | Roupas originais, mods de textura e animações do jogo. |
 | `game.py` | Catálogo de roupas, novos slots e geração da ISO. |
+| `share.py` | Arquivos `.t5mod`: exportar e importar mods. |
 | `blender.py`, `blender279_edit.py` | Projeto do Blender 2.79 e retorno ao Studio. |
 | `i18n.py`, `lang/` | Idiomas da interface. |
 

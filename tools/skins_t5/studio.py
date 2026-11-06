@@ -128,9 +128,9 @@ class Studio:
                                   for i,(b,pos) in enumerate(zip(target,worlds(target)[:,:3,3]))],
                     facial_available=native_face(target) and any(any(85<=mapping[int(i)]<=110 for i in m['indices'][m['weights']>0]) for m in meshes),
                     triangles=sum(len(m['faces']) for m in meshes),warnings=source['warnings'],physics_note=physics_note)
-    def original(self, base, textures=None):
+    def original(self, base, textures=None, package=None):
         textures={k:str(v) for k,v in (textures or {}).items() if v and Path(str(v)).is_file()}
-        result=original.preview(self.game(),base,self.home,self.register,textures)
+        result=original.preview(self.game(),base,self.home,self.register,textures,package)
         chars,_=catalogue(self.game())
         owner=next((c for c in chars for s in c['slots'] if s['index']==base),None)
         slot=next((s for s in owner['slots'] if s['index']==base),None) if owner else None
@@ -225,6 +225,7 @@ class Studio:
             return result
         if route == '/api/preview':
             if self.source is not None and self.source.get('kind') == 't5':return self.original(int(self.source['base_index']),data.get('textures'))
+            if self.source is not None and self.source.get('kind') == 'imported':raise ValueError('Mods importados só podem ser visualizados')
             return self.preview(data)
         if route == '/api/t5/costume':
             base=int(data['base_index']);result=self.original(base,data.get('textures'))
@@ -238,6 +239,7 @@ class Studio:
             return original.clip_transforms(self.game(),int(data['base_index']),int(data['bank']),int(data['clip']),bool(data.get('root')))
         if route == '/api/blender/edit':
             if self.source is None:raise ValueError('Escolha uma skin primeiro')
+            if self.source.get('kind') in ('t5','imported'):raise ValueError('Este modelo não é editado no Blender')
             from .blender import create
             base=int(data.get('base_index',28));settings=data.get('settings',{});source=self.source
             if not 0<=base<79:raise ValueError('Roupa base inválida')
@@ -266,6 +268,7 @@ class Studio:
         if route == '/api/convert':
             if self.source is None: raise ValueError('Escolha uma skin')
             if self.source.get('kind')=='t5':raise ValueError('Roupas originais são salvas como mod de texturas')
+            if self.source.get('kind')=='imported':raise ValueError('Mods importados só podem ser visualizados')
             source = self.source; settings=data.get('settings',{});base=int(data['base_index']);char=int(data['character']);mode=data['mode']
             chars,_ = catalogue(self.game())
             if base not in [s['index'] for s in chars[char]['slots']]: raise ValueError('A roupa base não pertence ao personagem')
@@ -299,6 +302,10 @@ class Studio:
             from .mods import inspect, delete
             mod=next((m for m in self.config['mods'] if m['id']==data.get('id')),None)
             if mod is None:raise ValueError('Mod inexistente')
+            if route.endswith('open') and mod.get('kind')=='imported':
+                base=int(mod['base_index']);result=self.original(base,None,Path(mod['asset']).read_bytes())
+                self.source=dict(kind='imported',base_index=base,name=mod['name'],path='')
+                result.update(path='',base_index=base,mod=mod,readonly=True,name=mod['name']);return result
             if route.endswith('open') and mod.get('kind')=='textures':
                 base=int(mod['base_index']);textures=mod.get('settings',{}).get('textures',{})
                 result=self.original(base,textures);self.source=dict(kind='t5',base_index=base,name=result['name'],path='')
@@ -311,6 +318,19 @@ class Studio:
             if route.endswith('delete-info'):return inspect(self.home,mod)
             if data.get('confirmed') is not True:raise ValueError('Confirme a exclusão dos arquivos do mod')
             return delete(self,mod,data.get('stamp'))
+        if route == '/api/mod/export':
+            from .share import export
+            mod=next((m for m in self.config['mods'] if m['id']==data.get('id')),None)
+            if mod is None:raise ValueError('Mod inexistente')
+            if not str(data.get('path','')).strip():raise ValueError('Escolha onde salvar o arquivo do mod')
+            return export(self,mod,data['path'],data.get('version',''))
+        if route == '/api/mod/import-info':
+            from .share import inspect as inspect_mod
+            info=inspect_mod(self,data.get('path',''))
+            return {k:info[k] for k in ('name','kind','character','character_name','base_index','mode','slot')}
+        if route == '/api/mod/import':
+            from .share import install
+            return install(self,data.get('path',''))
         if route == '/api/toggle':
             for m in self.config['mods']:
                 if m['id']==data['id']:
